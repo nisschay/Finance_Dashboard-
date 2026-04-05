@@ -1,0 +1,40 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# ---------- Virtual Environments ----------
+backend/venv/
+backend/.venv/
+
+# ---------- Node / Next ----------
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+
+# ---------- Environment Files ----------
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# Keep sanitized templates committed
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# ---------- Logs ----------
+logs/*.log
+backend/logs/*.log
+frontend/logs/*.log
+
+# Keep logs directory in repository
+!logs/.gitkeep
+
+# ---------- PID and cache files ----------
+.pids/*.pid
+.pids/*.sha256
+!.pids/.gitkeep
