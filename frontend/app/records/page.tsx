@@ -151,13 +151,16 @@ export default function RecordsPage() {
   const canGoNext = page * PAGE_LIMIT < recordsResponse.total;
 
   const emptyColSpan = canEdit ? 6 : 5;
+  const controlClassName =
+    "rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-2.5 py-1.5 text-sm text-[var(--text-1)] outline-none [color-scheme:dark] focus:border-[var(--green)] focus:shadow-[0_0_0_3px_rgba(29,158,117,0.2)]";
 
   const visibleRows = useMemo(() => {
     return recordsResponse.data.map((record) => {
-      const amountColor = record.type === "income" ? "text-[#0F6E56]" : "text-[#A32D2D]";
+      const amountColor =
+        record.type === "income" ? "text-[var(--green-text)]" : "text-[var(--red-text)]";
 
       return (
-        <tr key={record.id} className="border-b border-gray-100 text-[13px] text-gray-700">
+        <tr key={record.id} className="border-b border-[var(--border)] text-[13px] text-[var(--text-1)]">
           <td className="px-5 py-2.5">{record.date.slice(0, 10)}</td>
           <td className="px-5 py-2.5">{record.category}</td>
           <td className="px-5 py-2.5">
@@ -166,7 +169,7 @@ export default function RecordsPage() {
             </span>
           </td>
           <td className={`px-5 py-2.5 font-medium ${amountColor}`}>{formatCurrency(record.amount)}</td>
-          <td className="max-w-[280px] px-5 py-2.5 text-gray-500">{truncateNotes(record.notes)}</td>
+          <td className="max-w-[280px] px-5 py-2.5 text-[var(--text-2)]">{truncateNotes(record.notes)}</td>
           {canEdit ? (
             <td className="px-5 py-2.5">
               <div className="flex items-center gap-2">
@@ -176,7 +179,7 @@ export default function RecordsPage() {
                     setEditingRecord(record);
                     setIsModalOpen(true);
                   }}
-                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-500"
+                  className="rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-2 py-1 text-xs text-[var(--text-2)]"
                 >
                   Edit
                 </button>
@@ -200,7 +203,7 @@ export default function RecordsPage() {
                         }
                       })();
                     }}
-                    className="rounded-md border border-gray-200 px-2 py-1 text-xs text-red-500"
+                    className="rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-2 py-1 text-xs text-[var(--red-text)]"
                   >
                     Delete
                   </button>
@@ -214,13 +217,13 @@ export default function RecordsPage() {
   }, [recordsResponse.data, canEdit, canDelete, loadRecords]);
 
   if (authLoading || (firebaseUser && !profile && !error) || (!firebaseUser && !error)) {
-    return <p className="text-sm text-gray-400">Checking session...</p>;
+    return <p className="text-sm text-[var(--text-2)]">Checking session...</p>;
   }
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 text-[var(--text-1)]">
       <div className="flex items-center justify-between">
-        <h1 className="text-[18px] font-medium text-gray-900">Records</h1>
+        <h1 className="text-[18px] font-medium text-[var(--text-1)]">Records</h1>
         <button
           type="button"
           disabled={!canCreate}
@@ -234,22 +237,22 @@ export default function RecordsPage() {
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-100 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-500">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-2)] px-3.5 py-2.5 text-sm text-[var(--text-2)]">
         {ROLE_MESSAGE[role]} <span className={`rounded px-1.5 py-0.5 text-xs ${roleColor.bg} ${roleColor.text}`}>{role}</span>
       </div>
 
-      {loading ? <p className="text-sm text-gray-400">Loading records...</p> : null}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {loading ? <p className="text-sm text-[var(--text-2)]">Loading records...</p> : null}
+      {error ? <p className="text-sm text-[var(--red-text)]">{error}</p> : null}
 
-      <article className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-none">
-        <div className="flex flex-wrap gap-2 border-b border-gray-100 px-5 py-3">
+      <article className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-1)] shadow-none">
+        <div className="flex flex-wrap gap-2 border-b border-[var(--border)] px-5 py-3">
           <select
             value={selectedType}
             onChange={(event) => {
               setSelectedType(event.target.value as RecordType | "");
               setPage(1);
             }}
-            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+            className={controlClassName}
           >
             <option value="">All types</option>
             <option value="income">Income</option>
@@ -262,7 +265,7 @@ export default function RecordsPage() {
               setSelectedCategory(event.target.value);
               setPage(1);
             }}
-            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+            className={controlClassName}
           >
             <option value="">All categories</option>
             {categoryOptions.map((category) => (
@@ -279,7 +282,7 @@ export default function RecordsPage() {
               setFromDate(event.target.value);
               setPage(1);
             }}
-            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+            className={controlClassName}
           />
 
           <input
@@ -289,7 +292,7 @@ export default function RecordsPage() {
               setToDate(event.target.value);
               setPage(1);
             }}
-            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+            className={controlClassName}
           />
 
           <button
@@ -301,7 +304,7 @@ export default function RecordsPage() {
               setToDate("");
               setPage(1);
             }}
-            className="px-1 text-sm text-[#1D9E75]"
+            className="px-1 text-sm text-[var(--green-text)]"
           >
             Clear filters
           </button>
@@ -310,7 +313,7 @@ export default function RecordsPage() {
         <div className="overflow-x-auto">
           <table className="min-w-full">
             <thead>
-              <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wide text-gray-400">
+              <tr className="border-b border-[var(--border)] text-left text-[11px] font-medium uppercase tracking-wide text-[var(--text-2)]">
                 <th className="px-5 py-2.5">Date</th>
                 <th className="px-5 py-2.5">Category</th>
                 <th className="px-5 py-2.5">Type</th>
@@ -322,7 +325,7 @@ export default function RecordsPage() {
             <tbody>
               {recordsResponse.data.length === 0 ? (
                 <tr>
-                  <td colSpan={emptyColSpan} className="px-5 py-8 text-center text-[13px] text-gray-400">
+                  <td colSpan={emptyColSpan} className="px-5 py-8 text-center text-[13px] text-[var(--text-2)]">
                     No records found for current filters.
                   </td>
                 </tr>
@@ -333,7 +336,7 @@ export default function RecordsPage() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-sm text-gray-400">
+        <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3 text-sm text-[var(--text-2)]">
           <p>
             Showing {showingStart}-{showingEnd} of {recordsResponse.total} records
           </p>
@@ -343,7 +346,7 @@ export default function RecordsPage() {
               type="button"
               disabled={!canGoPrevious}
               onClick={() => setPage((current) => Math.max(1, current - 1))}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-2)] px-3 py-1.5 text-sm text-[var(--text-2)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Previous
             </button>
@@ -351,7 +354,7 @@ export default function RecordsPage() {
               type="button"
               disabled={!canGoNext}
               onClick={() => setPage((current) => current + 1)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-2)] px-3 py-1.5 text-sm text-[var(--text-2)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
             </button>

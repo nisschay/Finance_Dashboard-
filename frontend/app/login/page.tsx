@@ -190,6 +190,8 @@ export default function LoginPage() {
   }, [authLoading, firebaseUser, router]);
 
   const isBusy = loadingAction !== null;
+  const fieldClassName =
+    "h-[38px] w-full rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-3 text-sm text-[var(--text-1)] outline-none [color-scheme:dark] placeholder:text-[var(--text-3)] focus:border-[var(--green)] focus:shadow-[0_0_0_3px_rgba(29,158,117,0.2)]";
 
   const validateSignIn = () => {
     if (!email.trim() || !password.trim()) {
@@ -348,7 +350,7 @@ export default function LoginPage() {
 
   return (
     <section className="mx-auto flex min-h-[calc(100vh-120px)] max-w-6xl items-center justify-center px-4 py-12">
-      <div className="w-full max-w-[400px] rounded-[16px] border border-gray-200 bg-white p-8" style={{ borderWidth: "0.5px" }}>
+      <div className="w-full max-w-[400px] rounded-[16px] border border-[var(--border)] bg-[var(--bg-1)] p-8">
         <div className="flex items-center gap-2">
           <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] bg-[#1D9E75]">
             <svg viewBox="0 0 24 24" className="h-[14px] w-[14px]" fill="none" aria-hidden="true">
@@ -368,10 +370,10 @@ export default function LoginPage() {
               />
             </svg>
           </span>
-          <span className="text-[15px] font-medium text-gray-900">Finance Dashboard</span>
+          <span className="text-[15px] font-medium text-[var(--text-1)]">Finance Dashboard</span>
         </div>
 
-        <div className="mt-5 rounded-xl bg-gray-100 p-1">
+        <div className="mt-5 rounded-xl bg-[var(--bg-2)] p-1">
           <div className="grid grid-cols-2 gap-1">
             <button
               type="button"
@@ -381,8 +383,8 @@ export default function LoginPage() {
               }}
               className={`h-[34px] rounded-lg text-sm ${
                 tab === "signin"
-                  ? "border border-gray-200 bg-white text-gray-900"
-                  : "border border-transparent bg-transparent text-gray-500"
+                  ? "border border-[var(--border)] bg-[var(--bg-3)] text-[var(--text-1)]"
+                  : "border border-transparent bg-transparent text-[var(--text-2)]"
               }`}
             >
               Sign in
@@ -395,8 +397,8 @@ export default function LoginPage() {
               }}
               className={`h-[34px] rounded-lg text-sm ${
                 tab === "create"
-                  ? "border border-gray-200 bg-white text-gray-900"
-                  : "border border-transparent bg-transparent text-gray-500"
+                  ? "border border-[var(--border)] bg-[var(--bg-3)] text-[var(--text-1)]"
+                  : "border border-transparent bg-transparent text-[var(--text-2)]"
               }`}
             >
               Create account
@@ -405,7 +407,7 @@ export default function LoginPage() {
         </div>
 
         {error ? (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div className="mt-4 rounded-lg border border-[var(--red)] bg-[var(--red-dim)] px-3 py-2 text-sm text-[var(--red-text)]">{error}</div>
         ) : null}
 
         <div className="mt-4 space-y-3">
@@ -415,8 +417,7 @@ export default function LoginPage() {
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Full name"
-              className="h-[38px] w-full rounded-md border border-gray-200 px-3 text-sm text-gray-800 outline-none focus:border-[#1D9E75] focus:shadow-[0_0_0_3px_rgba(29,158,117,0.12)]"
-              style={{ borderWidth: "0.5px" }}
+              className={fieldClassName}
             />
           ) : null}
 
@@ -425,8 +426,7 @@ export default function LoginPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="Email"
-            className="h-[38px] w-full rounded-md border border-gray-200 px-3 text-sm text-gray-800 outline-none focus:border-[#1D9E75] focus:shadow-[0_0_0_3px_rgba(29,158,117,0.12)]"
-            style={{ borderWidth: "0.5px" }}
+            className={fieldClassName}
           />
 
           <input
@@ -434,8 +434,7 @@ export default function LoginPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Password"
-            className="h-[38px] w-full rounded-md border border-gray-200 px-3 text-sm text-gray-800 outline-none focus:border-[#1D9E75] focus:shadow-[0_0_0_3px_rgba(29,158,117,0.12)]"
-            style={{ borderWidth: "0.5px" }}
+            className={fieldClassName}
           />
 
           {tab === "signin" ? (
@@ -459,17 +458,16 @@ export default function LoginPage() {
           )}
 
           <div className="flex items-center gap-2 py-1">
-            <span className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs uppercase tracking-wide text-gray-400">or</span>
-            <span className="h-px flex-1 bg-gray-200" />
+            <span className="h-px flex-1 bg-[var(--border)]" />
+            <span className="text-xs uppercase tracking-wide text-[var(--text-2)]">or</span>
+            <span className="h-px flex-1 bg-[var(--border)]" />
           </div>
 
           <button
             type="button"
             onClick={() => void onGoogleClick()}
             disabled={isBusy}
-            className="flex h-[38px] w-full items-center justify-center gap-2 rounded-md border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ borderWidth: "0.5px" }}
+            className="flex h-[38px] w-full items-center justify-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-2)] text-sm text-[var(--text-1)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <GoogleLogo />
             <span>{loadingAction === "google" ? "Connecting..." : "Continue with Google"}</span>
@@ -477,7 +475,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <p className="absolute bottom-6 left-0 right-0 text-center text-xs text-gray-400">
+      <p className="absolute bottom-6 left-0 right-0 text-center text-xs text-[var(--text-2)]">
         Secure access for your finance workspace.
       </p>
     </section>

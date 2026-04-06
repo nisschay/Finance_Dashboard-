@@ -57,6 +57,8 @@ export default function AddRecordModal({
   const [error, setError] = useState<string | null>(null);
 
   const canManageRecords = userRole === "analyst" || userRole === "admin";
+  const inputClassName =
+    "w-full rounded-md border border-[var(--border)] bg-[var(--bg-2)] px-2.5 py-1.5 text-sm text-[var(--text-1)] outline-none [color-scheme:dark] placeholder:text-[var(--text-3)] focus:border-[var(--green)] focus:shadow-[0_0_0_3px_rgba(29,158,117,0.2)]";
 
   useEffect(() => {
     if (!isOpen) {
@@ -122,28 +124,28 @@ export default function AddRecordModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl border border-gray-100 bg-white p-6">
-        <h2 className="text-[18px] font-medium text-gray-900">{title}</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg-1)] p-6">
+        <h2 className="text-[18px] font-medium text-[var(--text-1)]">{title}</h2>
 
         <div className="mt-5 space-y-3.5">
           <div>
-            <label className="mb-1.5 block text-[12px] font-medium text-gray-500">Amount</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-[var(--text-2)]">Amount</label>
             <input
               type="number"
               placeholder="0.00"
               value={draft.amount}
               onChange={(event) => updateDraft({ amount: event.target.value })}
-              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+              className={inputClassName}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[12px] font-medium text-gray-500">Type</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-[var(--text-2)]">Type</label>
             <select
               value={draft.type}
               onChange={(event) => updateDraft({ type: event.target.value as RecordType | "" })}
-              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+              className={inputClassName}
             >
               <option value="">Select type</option>
               <option value="income">income</option>
@@ -152,46 +154,46 @@ export default function AddRecordModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[12px] font-medium text-gray-500">Category</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-[var(--text-2)]">Category</label>
             <input
               type="text"
               autoComplete="off"
               placeholder="e.g. Salary, Food, Housing"
               value={draft.category}
               onChange={(event) => updateDraft({ category: event.target.value })}
-              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+              className={inputClassName}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[12px] font-medium text-gray-500">Date</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-[var(--text-2)]">Date</label>
             <input
               type="date"
               value={draft.date}
               onChange={(event) => updateDraft({ date: event.target.value })}
-              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+              className={inputClassName}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[12px] font-medium text-gray-500">Notes</label>
+            <label className="mb-1.5 block text-[12px] font-medium text-[var(--text-2)]">Notes</label>
             <textarea
               rows={3}
               placeholder="Optional note"
               value={draft.notes}
               onChange={(event) => updateDraft({ notes: event.target.value })}
-              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+              className={inputClassName}
             />
           </div>
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-[var(--red-text)]">{error}</p> : null}
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-gray-200 bg-white px-3.5 py-1.5 text-sm text-gray-500"
+            className="rounded-lg border border-[var(--border)] bg-[var(--bg-2)] px-3.5 py-1.5 text-sm text-[var(--text-2)]"
           >
             Cancel
           </button>
