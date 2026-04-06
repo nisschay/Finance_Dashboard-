@@ -2,8 +2,10 @@
 
 import {
   User,
+  UserCredential,
   onIdTokenChanged,
   onAuthStateChanged,
+  signInWithRedirect,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
@@ -32,6 +34,32 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+const POPUP_TIMEOUT_MS = 15000;
+const POPUP_FALLBACK_ERROR_CODES = new Set([
+  "auth/popup-blocked",
+  "auth/popup-closed-by-user",
+  "auth/cancelled-popup-request",
+  "auth/operation-not-supported-in-this-environment",
+]);
+
+function getAuthErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function shouldFallbackToRedirect(error: unknown): boolean {
+  if (error instanceof Error && error.message === "popup-timeout") {
+    return true;
+  }
+
+  const code = getAuthErrorCode(error);
+  return Boolean(code && POPUP_FALLBACK_ERROR_CODES.has(code));
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -104,7 +132,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setError(null);
-    const result = await signInWithPopup(auth, googleProvider);
+
+    let popupTimeoutId: number | undefined;
+    let result: UserCredential;
+
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        popupTimeoutId = window.setTimeout(() => {
+          reject(new Error("popup-timeout"));
+        }, POPUP_TIMEOUT_MS);
+      });
+
+      result = await Promise.race([signInWithPopup(auth, googleProvider), timeoutPromise]);
+    } catch (err) {
+      if (shouldFallbackToRedirect(err)) {
+        logger.warn("auth", "Popup login did not complete, falling back to redirect", {
+          code: getAuthErrorCode(err),
+          message: err instanceof Error ? err.message : "unknown",
+        });
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
+      throw err;
+    } finally {
+      if (popupTimeoutId) {
+        window.clearTimeout(popupTimeoutId);
+      }
+    }
+
     const user = result.user;
 
     if (!user.email) {

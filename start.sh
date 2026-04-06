@@ -66,10 +66,40 @@ require_file() {
 }
 
 load_backend_env() {
-  set -a
-  # shellcheck disable=SC1091
-  source "$BACKEND_DIR/.env"
-  set +a
+  while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+    local line="$raw_line"
+
+    # Strip Windows CR if present.
+    line="${line%$'\r'}"
+
+    # Skip comments and empty lines.
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+
+    # Ignore malformed lines without key=value shape.
+    [[ "$line" == *"="* ]] || continue
+
+    local key="${line%%=*}"
+    local value="${line#*=}"
+
+    # Trim surrounding spaces around key.
+    key="${key#${key%%[![:space:]]*}}"
+    key="${key%${key##*[![:space:]]}}"
+
+    # Trim surrounding spaces around value.
+    value="${value#${value%%[![:space:]]*}}"
+    value="${value%${value##*[![:space:]]}}"
+
+    # Unwrap optional quotes.
+    if [[ "$value" =~ ^".*"$ ]]; then
+      value="${value:1:-1}"
+    elif [[ "$value" =~ ^\'.*\'$ ]]; then
+      value="${value:1:-1}"
+    fi
+
+    if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      export "$key=$value"
+    fi
+  done < "$BACKEND_DIR/.env"
 }
 
 ensure_dirs() {
@@ -102,13 +132,85 @@ install_backend_requirements_if_needed() {
 run_backend_schema() {
   require_command psql
 
+  if [[ "${SKIP_DB_MIGRATION:-0}" == "1" ]]; then
+    print_info "SKIP_DB_MIGRATION=1 set, skipping schema migration step"
+    return
+  fi
+
   if [[ -z "${DATABASE_URL:-}" ]]; then
     print_error "DATABASE_URL is not set in backend/.env"
     exit 1
   fi
 
+  if ! DATABASE_URL_VALUE="$DATABASE_URL" python3 - <<'PY'
+import os
+import socket
+import sys
+from urllib.parse import urlparse
+
+url = os.getenv("DATABASE_URL_VALUE", "")
+if not url:
+    print("DATABASE_URL missing")
+    raise SystemExit(1)
+
+parsed = urlparse(url)
+host = parsed.hostname
+port = parsed.port or 5432
+
+if not host:
+    print("DATABASE_URL host is missing")
+    raise SystemExit(1)
+
+try:
+    socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+except Exception as exc:
+    print(f"DNS resolution failed for {host}:{port} -> {exc!r}")
+    raise SystemExit(2)
+
+try:
+    conn = socket.create_connection((host, port), timeout=5)
+    conn.close()
+except Exception as exc:
+    print(f"TCP connection failed for {host}:{port} -> {exc!r}")
+    raise SystemExit(3)
+
+print(f"Database network precheck passed for {host}:{port}")
+PY
+  then
+    print_error "Database host is unreachable from this machine. Check network/VPN/firewall and Neon endpoint settings."
+    exit 1
+  fi
+
   print_info "Applying schema.sql to DATABASE_URL"
-  psql "$DATABASE_URL" -f "$BACKEND_DIR/schema.sql" >/dev/null
+
+  local status=0
+  local stderr_log
+  stderr_log="$(mktemp)"
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 30 env PGCONNECT_TIMEOUT=10 psql -w -v ON_ERROR_STOP=1 "$DATABASE_URL" -f "$BACKEND_DIR/schema.sql" >/dev/null 2>"$stderr_log" || status=$?
+  else
+    env PGCONNECT_TIMEOUT=10 psql -w -v ON_ERROR_STOP=1 "$DATABASE_URL" -f "$BACKEND_DIR/schema.sql" >/dev/null 2>"$stderr_log" || status=$?
+  fi
+
+  if [[ "$status" -ne 0 ]]; then
+    if [[ "$status" -eq 124 ]]; then
+      print_error "Database migration timed out after 30s. Check Neon connectivity and DATABASE_URL host/credentials."
+    else
+      print_error "Failed to apply schema.sql to DATABASE_URL."
+    fi
+
+    if [[ -s "$stderr_log" ]]; then
+      echo "--- psql error output ---" >&2
+      cat "$stderr_log" >&2
+      echo "-------------------------" >&2
+    fi
+
+    rm -f "$stderr_log"
+    exit 1
+  fi
+
+  rm -f "$stderr_log"
 }
 
 install_frontend_dependencies_if_needed() {
