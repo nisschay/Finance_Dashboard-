@@ -6,6 +6,7 @@ They matter because every protected endpoint depends on consistent 401/403 behav
 from typing import Any, Dict
 
 from fastapi import HTTPException, status
+from psycopg2.extras import RealDictCursor
 
 
 def test_request_without_authorization_header_returns_401(auth_client):
@@ -57,3 +58,37 @@ def test_request_from_active_user_with_valid_token_proceeds(auth_client, viewer_
     response = auth_client.get("/users/me", headers={"Authorization": "Bearer valid-token"})
 
     assert response.status_code == status.HTTP_200_OK
+
+
+def test_admin_email_role_is_auto_corrected_during_auth(auth_client, db_connection, monkeypatch):
+    with db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute(
+            """
+            INSERT INTO users (firebase_uid, email, name, role, status)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            ("firebase-admin-uid", "admin@finance.dev", "Admin User", "viewer", "active"),
+        )
+        row = cursor.fetchone()
+    db_connection.commit()
+
+    async def _valid_token(_: str) -> Dict[str, Any]:
+        return {
+            "firebase_uid": "firebase-admin-uid",
+            "email": "admin@finance.dev",
+            "claims": {},
+        }
+
+    monkeypatch.setattr("auth.dependencies.verify_firebase_token", _valid_token)
+
+    response = auth_client.get("/users/me", headers={"Authorization": "Bearer valid-token"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["role"] == "admin"
+
+    with db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("SELECT role FROM users WHERE id = %s", (row["id"],))
+        updated = cursor.fetchone()
+
+    assert updated["role"] == "admin"

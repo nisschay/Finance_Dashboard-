@@ -51,11 +51,30 @@ def get_db() -> Generator[PGConnection, None, None]:
 
     conn = _db_pool.getconn()
 
+    # Drop stale pooled connections and fetch a fresh one when needed.
+    if conn.closed:
+        _db_pool.putconn(conn, close=True)
+        conn = _db_pool.getconn()
+
+    if conn.closed:
+        _db_pool.putconn(conn, close=True)
+        raise RuntimeError("Failed to obtain an open database connection from pool")
+
+    returned_to_pool = False
+
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        # A dropped network connection can leave psycopg2 connection closed.
+        # Guard rollback in that case so error handling does not raise a second exception.
+        if not conn.closed:
+            conn.rollback()
+            _db_pool.putconn(conn)
+        else:
+            _db_pool.putconn(conn, close=True)
+        returned_to_pool = True
         raise
     finally:
-        _db_pool.putconn(conn)
+        if not returned_to_pool:
+            _db_pool.putconn(conn, close=bool(conn.closed))

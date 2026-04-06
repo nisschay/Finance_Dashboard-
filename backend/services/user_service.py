@@ -10,7 +10,7 @@ ADMIN_EMAIL = "admin@finance.dev"
 ANALYST_EMAIL = "analyst@finance.dev"
 
 
-def _role_for_email(email: str) -> str:
+def role_for_email(email: str) -> str:
     normalized = email.strip().lower()
 
     if normalized == ADMIN_EMAIL:
@@ -26,7 +26,7 @@ def sync_user(firebase_uid: str, email: str, name: str) -> Dict[str, Any]:
     if not firebase_uid or not email or not name:
         raise ValueError("firebase_uid, email, and name are required")
 
-    role_for_user = _role_for_email(email)
+    role_for_user = role_for_email(email)
 
     with get_db() as db:
         with db.cursor(cursor_factory=RealDictCursor) as cursor:

@@ -6,6 +6,7 @@ from psycopg2.extras import RealDictCursor
 
 from auth.firebase import verify_firebase_token
 from database import get_db
+from services.user_service import role_for_email
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -41,6 +42,25 @@ async def get_current_user(
                 (firebase_uid,),
             )
             user = cursor.fetchone()
+
+            if user:
+                expected_role = role_for_email(str(user["email"]))
+                current_role = str(user["role"]).lower()
+
+                if current_role != expected_role:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET role = %s
+                        WHERE id = %s
+                        RETURNING role
+                        """,
+                        (expected_role, user["id"]),
+                    )
+                    updated_row = cursor.fetchone()
+
+                    if updated_row:
+                        user["role"] = updated_row["role"]
 
     if not user:
         raise HTTPException(
