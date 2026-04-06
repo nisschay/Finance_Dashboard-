@@ -3,9 +3,61 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+
+  --bg-0: #0f1117;
+  --bg-1: #161b27;
+  --bg-2: #1e2535;
+  --bg-3: #252d3d;
+  --border: #2a3347;
+  --text-1: #f0f4ff;
+  --text-2: #8892a4;
+  --text-3: #4a5568;
+
+  --green: #1d9e75;
+  --green-dim: #0f4d38;
+  --green-text: #4ecca3;
+  --red: #e05252;
+  --red-dim: #4d1f1f;
+  --red-text: #f87171;
+  --blue: #3b82f6;
+  --blue-dim: #1e2f4d;
+  --blue-text: #93c5fd;
+  --amber: #f59e0b;
+  --amber-dim: #3d2e0a;
+  --amber-text: #fcd34d;
+}
+
+[data-theme="dark"] {
+  --bg-0: #0f1117;
+  --bg-1: #161b27;
+  --bg-2: #1e2535;
+  --bg-3: #252d3d;
+  --border: #2a3347;
+  --text-1: #f0f4ff;
+  --text-2: #8892a4;
+  --text-3: #4a5568;
+
+  --green: #1d9e75;
+  --green-dim: #0f4d38;
+  --green-text: #4ecca3;
+  --red: #e05252;
+  --red-dim: #4d1f1f;
+  --red-text: #f87171;
+  --blue: #3b82f6;
+  --blue-dim: #1e2f4d;
+  --blue-text: #93c5fd;
+  --amber: #f59e0b;
+  --amber-dim: #3d2e0a;
+  --amber-text: #fcd34d;
+}
+
+html,
+body {
+  background: var(--bg-0);
+  color: var(--text-1);
 }
 
 body {
-  @apply bg-gray-50 text-gray-900;
+  min-height: 100vh;
 }

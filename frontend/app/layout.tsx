@@ -14,8 +14,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className="bg-gray-50 text-gray-900">
+    <html lang="en" data-theme="dark">
+      <body className="bg-[var(--bg-0)] text-[var(--text-1)]">
         <Providers>
           <NavbarShell />
           <main className="mx-auto w-full max-w-6xl px-4 py-5">{children}</main>
