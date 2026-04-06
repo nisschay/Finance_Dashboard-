@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional
 
 from psycopg2.extensions import connection as PGConnection
@@ -10,13 +11,24 @@ ADMIN_EMAIL = "admin@finance.dev"
 ANALYST_EMAIL = "analyst@finance.dev"
 
 
+def _configured_emails(env_key: str, default_email: str) -> set[str]:
+    raw = os.getenv(env_key, "")
+    parsed = {item.strip().lower() for item in raw.split(",") if item.strip()}
+    parsed.add(default_email)
+    return parsed
+
+
+ADMIN_EMAILS = _configured_emails("ADMIN_ROLE_EMAILS", ADMIN_EMAIL)
+ANALYST_EMAILS = _configured_emails("ANALYST_ROLE_EMAILS", ANALYST_EMAIL)
+
+
 def role_for_email(email: str) -> str:
     normalized = email.strip().lower()
 
-    if normalized == ADMIN_EMAIL:
+    if normalized in ADMIN_EMAILS:
         return "admin"
 
-    if normalized == ANALYST_EMAIL:
+    if normalized in ANALYST_EMAILS:
         return "analyst"
 
     return "viewer"
@@ -26,24 +38,57 @@ def sync_user(firebase_uid: str, email: str, name: str) -> Dict[str, Any]:
     if not firebase_uid or not email or not name:
         raise ValueError("firebase_uid, email, and name are required")
 
-    role_for_user = role_for_email(email)
+    normalized_email = email.strip().lower()
+    role_for_user = role_for_email(normalized_email)
 
     with get_db() as db:
         with db.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(
                 """
-                INSERT INTO users (firebase_uid, email, name, role)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (firebase_uid)
-                DO UPDATE SET
-                    email = EXCLUDED.email,
-                    name = EXCLUDED.name,
-                    role = EXCLUDED.role
-                RETURNING id, firebase_uid, email, name, role, status, created_at
+                SELECT id
+                FROM users
+                WHERE email = %s
+                LIMIT 1
                 """,
-                (firebase_uid, email, name, role_for_user),
+                (normalized_email,),
             )
-            user = cursor.fetchone()
+            existing_by_email = cursor.fetchone()
+
+            if existing_by_email:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET firebase_uid = %s,
+                        email = %s,
+                        name = %s,
+                        role = %s
+                    WHERE id = %s
+                    RETURNING id, firebase_uid, email, name, role, status, created_at
+                    """,
+                    (
+                        firebase_uid,
+                        normalized_email,
+                        name,
+                        role_for_user,
+                        existing_by_email["id"],
+                    ),
+                )
+                user = cursor.fetchone()
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO users (firebase_uid, email, name, role)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (firebase_uid)
+                    DO UPDATE SET
+                        email = EXCLUDED.email,
+                        name = EXCLUDED.name,
+                        role = EXCLUDED.role
+                    RETURNING id, firebase_uid, email, name, role, status, created_at
+                    """,
+                    (firebase_uid, normalized_email, name, role_for_user),
+                )
+                user = cursor.fetchone()
 
     if user is None:
         raise RuntimeError("Unable to synchronize user")

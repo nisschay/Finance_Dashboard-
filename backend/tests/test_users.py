@@ -73,6 +73,44 @@ def test_users_sync_for_existing_firebase_uid_returns_existing_user(auth_client,
     assert first.json()["id"] == second.json()["id"]
 
 
+def test_users_sync_updates_firebase_uid_for_existing_email(auth_client, db_connection, monkeypatch):
+    with db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute(
+            """
+            INSERT INTO users (firebase_uid, email, name, role, status)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            ("old-firebase-uid", "admin@finance.dev", "Admin User", "viewer", "active"),
+        )
+        seeded = cursor.fetchone()
+    db_connection.commit()
+
+    async def _valid_token(_: str) -> Dict[str, Any]:
+        return {
+            "firebase_uid": "new-firebase-uid",
+            "email": "admin@finance.dev",
+            "claims": {},
+        }
+
+    monkeypatch.setattr("routers.users.verify_firebase_token", _valid_token)
+
+    response = auth_client.post(
+        "/users/sync",
+        headers={"Authorization": "Bearer valid-token"},
+        json={
+            "firebase_uid": "new-firebase-uid",
+            "email": "admin@finance.dev",
+            "name": "Admin User",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["id"] == seeded["id"]
+    assert response.json()["firebase_uid"] == "new-firebase-uid"
+    assert response.json()["role"] == "admin"
+
+
 def test_users_me_returns_authenticated_users_data(client, mock_current_user, viewer_user):
     mock_current_user(user=viewer_user)
 

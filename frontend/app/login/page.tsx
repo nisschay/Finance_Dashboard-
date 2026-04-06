@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   User,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
 } from "firebase/auth";
@@ -14,7 +15,7 @@ import { useAuth } from "@/lib/auth-context";
 import { auth } from "@/lib/firebase";
 
 type AuthTab = "signin" | "create";
-type LoadingAction = "signin" | "create" | "google" | null;
+type LoadingAction = "signin" | "create" | "google" | "reset" | null;
 
 function mapAuthError(error: unknown): string {
   const code =
@@ -27,6 +28,8 @@ function mapAuthError(error: unknown): string {
       return "No account found with this email.";
     case "auth/wrong-password":
       return "Incorrect password. Please try again.";
+    case "auth/invalid-credential":
+      return "Invalid email or password. Use Forgot password to reset it.";
     case "auth/email-already-in-use":
       return "An account with this email already exists.";
     case "auth/weak-password":
@@ -228,6 +231,30 @@ export default function LoginPage() {
     }
   };
 
+  const onForgotPasswordClick = async () => {
+    if (!auth) {
+      setError("Authentication is not initialized.");
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Enter your email first, then click Forgot password.");
+      return;
+    }
+
+    setError("");
+    setLoadingAction("reset");
+
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setError("Password reset email sent. Check your inbox and spam folder.");
+    } catch (err) {
+      setError(mapAuthError(err));
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   return (
     <section className="mx-auto flex min-h-[calc(100vh-120px)] max-w-6xl items-center justify-center px-4 py-12">
       <div className="w-full max-w-[400px] rounded-[16px] border border-gray-200 bg-white p-8" style={{ borderWidth: "0.5px" }}>
@@ -322,8 +349,13 @@ export default function LoginPage() {
 
           {tab === "signin" ? (
             <div className="flex justify-end">
-              <button type="button" className="text-sm text-[#1D9E75] hover:opacity-80">
-                Forgot password?
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => void onForgotPasswordClick()}
+                className="text-sm text-[#1D9E75] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingAction === "reset" ? "Sending reset email..." : "Forgot password?"}
               </button>
             </div>
           ) : null}
