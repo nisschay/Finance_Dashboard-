@@ -109,15 +109,21 @@ export default function RecordsPage() {
   }, [selectedType, selectedCategory, fromDate, toDate, page]);
 
   useEffect(() => {
-    if (!authLoading && !firebaseUser) {
+    if (authLoading) {
+      return;
+    }
+
+    if (!firebaseUser) {
       router.replace("/login");
       return;
     }
 
-    if (firebaseUser) {
-      void loadRecords();
+    if (!profile) {
+      return;
     }
-  }, [authLoading, firebaseUser, router, loadRecords]);
+
+    void loadRecords();
+  }, [authLoading, firebaseUser, profile, router, loadRecords]);
 
   const showingStart = recordsResponse.total === 0 ? 0 : (page - 1) * PAGE_LIMIT + 1;
   const showingEnd =
@@ -189,7 +195,7 @@ export default function RecordsPage() {
     });
   }, [recordsResponse.data, canEdit, canDelete, loadRecords]);
 
-  if (authLoading || (!firebaseUser && !error)) {
+  if (authLoading || (firebaseUser && !profile && !error) || (!firebaseUser && !error)) {
     return <p className="text-sm text-gray-400">Checking session...</p>;
   }
 

@@ -87,15 +87,21 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!authLoading && !firebaseUser) {
+    if (authLoading) {
+      return;
+    }
+
+    if (!firebaseUser) {
       router.replace("/login");
       return;
     }
 
-    if (firebaseUser) {
-      void loadDashboard();
+    if (!profile) {
+      return;
     }
-  }, [authLoading, firebaseUser, router, loadDashboard]);
+
+    void loadDashboard();
+  }, [authLoading, firebaseUser, profile, router, loadDashboard]);
 
   const categoryRows = useMemo(() => {
     return categories.map((item) => ({
@@ -104,7 +110,7 @@ export default function DashboardPage() {
     }));
   }, [categories]);
 
-  if (authLoading || (!firebaseUser && !error)) {
+  if (authLoading || (firebaseUser && !profile && !error) || (!firebaseUser && !error)) {
     return <p className="text-sm text-gray-400">Checking session...</p>;
   }
 

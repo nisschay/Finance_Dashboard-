@@ -80,6 +80,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const syncAuthenticatedUser = async (user: User) => {
+    if (!user.email) {
+      throw new Error("Authenticated user email is missing");
+    }
+
+    const fallbackName = user.displayName || user.email.split("@")[0] || "User";
+
+    await syncUser({
+      firebase_uid: user.uid,
+      email: user.email,
+      name: fallbackName,
+    });
+  };
+
   useEffect(() => {
     if (!auth) {
       setLoading(false);
@@ -101,6 +115,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.info("auth", "User logged in", { uid: user.uid, email: user.email });
 
       try {
+        try {
+          await syncAuthenticatedUser(user);
+          logger.info("auth", "User synchronized on auth state change", {
+            uid: user.uid,
+            email: user.email,
+          });
+        } catch (err) {
+          logger.error("auth", "User sync on auth state change failed", err);
+        }
+
         await refreshProfile();
       } finally {
         setLoading(false);

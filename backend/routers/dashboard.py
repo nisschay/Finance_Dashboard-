@@ -16,7 +16,7 @@ router = APIRouter()
 
 @router.get("/summary")
 async def get_dashboard_summary(
-    _: Dict[str, Any] = Depends(require_roles("analyst", "admin")),
+    _: Dict[str, Any] = Depends(require_roles("viewer", "analyst", "admin")),
 ) -> Dict[str, Any]:
     with get_db() as db:
         return get_summary(db)
@@ -24,7 +24,7 @@ async def get_dashboard_summary(
 
 @router.get("/by-category")
 async def get_dashboard_by_category(
-    _: Dict[str, Any] = Depends(require_roles("analyst", "admin")),
+    _: Dict[str, Any] = Depends(require_roles("viewer", "analyst", "admin")),
 ) -> list[Dict[str, Any]]:
     with get_db() as db:
         return get_by_category(db)
@@ -33,7 +33,7 @@ async def get_dashboard_by_category(
 @router.get("/trends")
 async def get_dashboard_trends(
     months: int = Query(default=6, ge=1, le=60),
-    _: Dict[str, Any] = Depends(require_roles("analyst", "admin")),
+    _: Dict[str, Any] = Depends(require_roles("viewer", "analyst", "admin")),
 ) -> list[Dict[str, Any]]:
     with get_db() as db:
         return get_monthly_trends(db, months=months)

@@ -127,7 +127,7 @@ function buildRecordsPath(params: GetRecordsParams): string {
   });
 
   const qs = searchParams.toString();
-  return qs ? `/records?${qs}` : "/records";
+  return qs ? `/records/?${qs}` : "/records/";
 }
 
 function isRecordsEnvelope(payload: unknown): payload is {
@@ -295,7 +295,7 @@ export async function getRecords(params: GetRecordsParams = {}): Promise<Records
 }
 
 export async function createRecord(payload: CreateRecordPayload): Promise<FinancialRecord> {
-  const response = await request<UnknownObject>("/records", {
+  const response = await request<UnknownObject>("/records/", {
     method: "POST",
     body: JSON.stringify(payload),
   });
