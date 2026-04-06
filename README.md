@@ -6,7 +6,7 @@ Finance Dashboard is a full-stack financial tracking and analytics system design
 
 ## 2. Architecture Overview
 
-The frontend authenticates the user through Firebase Google Sign-In and sends the Firebase ID token as a Bearer token with each API call. The backend validates the token using cached Firebase public keys, resolves the local user profile and status from the database, enforces route-level role requirements, executes service-layer business logic, and reads or writes data in PostgreSQL. This creates a clear security and data flow from identity to authorization to persistence.
+The frontend authenticates users through Firebase (Google Sign-In or email/password) and sends the Firebase ID token as a Bearer token with each API call. The backend validates the token using cached Firebase public keys, resolves the local user profile and status from the database, enforces route-level role requirements, executes service-layer business logic, and reads or writes data in PostgreSQL. This creates a clear security and data flow from identity to authorization to persistence.
 
 ```text
 +-------------------+      +------------------+      +-------------------+      +------------------+
@@ -41,7 +41,7 @@ The security model follows three sequential layers. First, each protected reques
 
 | Role | User Management | Financial Records (Read) | Financial Records (Create/Update) | Financial Records (Delete) | Dashboard Summary/Category/Trends | Dashboard Recent |
 |---|---|---|---|---|---|---|
-| viewer | allowed (sync, me), not allowed (admin user management) | allowed | not allowed | not allowed | not allowed | allowed |
+| viewer | allowed (sync, me), not allowed (admin user management) | allowed | not allowed | not allowed | allowed | allowed |
 | analyst | allowed (sync, me), not allowed (admin user management) | allowed | allowed | not allowed | allowed | allowed |
 | admin | allowed | allowed | allowed | allowed | allowed | allowed |
 
@@ -75,9 +75,9 @@ All endpoints below, except /health, require Authorization: Bearer <firebase_id_
 
 | Method | Endpoint | Roles Allowed | Description | Request Body (if any) |
 |---|---|---|---|---|
-| GET | /dashboard/summary | analyst, admin | Returns totals for income, expenses, net balance, and active record count | None |
-| GET | /dashboard/by-category | analyst, admin | Returns grouped totals by category | None |
-| GET | /dashboard/trends | analyst, admin | Returns monthly trend data (income, expenses, net) | Query: months (default 6) |
+| GET | /dashboard/summary | viewer, analyst, admin | Returns totals for income, expenses, net balance, and active record count | None |
+| GET | /dashboard/by-category | viewer, analyst, admin | Returns grouped totals by category | None |
+| GET | /dashboard/trends | viewer, analyst, admin | Returns monthly trend data (income, expenses, net) | Query: months (default 6) |
 | GET | /dashboard/recent | viewer, analyst, admin | Returns most recent active records | Query: limit (default 10) |
 
 ## 6. Data Model
@@ -164,7 +164,7 @@ psql "$DATABASE_URL" -f schema.sql
 6. Start the backend server.
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 7860
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend setup
@@ -199,13 +199,19 @@ npm run dev
 | MIN_DB_CONNECTIONS | No | Minimum DB pool size | 1 |
 | MAX_DB_CONNECTIONS | No | Maximum DB pool size | 10 |
 | CORS_EXTRA_ORIGINS | No | Extra allowed origins for backend CORS | https://my-app.vercel.app |
-| NEXT_PUBLIC_API_BASE_URL | Yes | Frontend target base URL for backend API | http://localhost:7860 |
+| ADMIN_ROLE_EMAILS | No | Comma-separated additional admin emails (default admin@finance.dev always included) | admin+project@finance.dev |
+| ANALYST_ROLE_EMAILS | No | Comma-separated additional analyst emails (default analyst@finance.dev always included) | analyst+project@finance.dev |
+| NEXT_PUBLIC_API_BASE_URL | Yes | Frontend target base URL for backend API | http://localhost:8000 |
 | NEXT_PUBLIC_FIREBASE_API_KEY | Yes | Firebase web app API key | AIza... |
 | NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN | Yes | Firebase auth domain | your-app.firebaseapp.com |
 | NEXT_PUBLIC_FIREBASE_PROJECT_ID | Yes | Firebase project id for frontend SDK | finance-dashboard-prod |
 | NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET | Yes | Firebase storage bucket | finance-dashboard-prod.appspot.com |
 | NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID | Yes | Firebase messaging sender id | 123456789012 |
 | NEXT_PUBLIC_FIREBASE_APP_ID | Yes | Firebase web app id | 1:123456789012:web:abcdef123456 |
+| NEXT_PUBLIC_ADMIN_ROLE_EMAILS | No | Frontend list of admin role emails used by role-account bootstrap logic | admin+project@finance.dev |
+| NEXT_PUBLIC_ANALYST_ROLE_EMAILS | No | Frontend list of analyst role emails used by role-account bootstrap logic | analyst+project@finance.dev |
+| NEXT_PUBLIC_ADMIN_BOOTSTRAP_PASSWORD | No | Optional admin fallback password used for role-account bootstrap sign-in | set-in-host-env |
+| NEXT_PUBLIC_ANALYST_BOOTSTRAP_PASSWORD | No | Optional analyst fallback password used for role-account bootstrap sign-in | set-in-host-env |
 
 ## 8. Testing
 
@@ -236,7 +242,7 @@ Soft delete is assumed to be mandatory for financial records so historical actio
 
 Firebase public keys are assumed safe to cache in memory with refresh on verification failure, balancing security with latency in a serverless-like deployment context.
 
-Category is assumed to be free text to support changing business labels without schema migrations, accepting that naming consistency is managed at the application/process level.
+Category is assumed to be user-entered text but normalized for consistency (trimmed/title-case) so filters and reporting stay stable without adding a dedicated categories table.
 
 Pagination defaults are assumed to be page=1 and limit=20 as practical defaults for UI performance and API response size control.
 
@@ -248,7 +254,7 @@ In-memory key caching reduces verification overhead but resets on restart, meani
 
 Storing roles in the application database provides full ownership of authorization policy, but requires careful synchronization between external identity and internal account lifecycle state.
 
-Keeping category as free text increases flexibility and onboarding speed, while trading off strict normalization and potentially requiring future cleanup or migration to a dedicated categories table.
+Keeping category as user-entered text increases flexibility and onboarding speed, while trading off strict relational normalization. Application-level normalization mitigates duplicate labels, but a dedicated categories table may still be preferable for strict governance.
 
 ## 10. Design Decisions
 
@@ -302,3 +308,17 @@ This section summarizes the concrete implementation changes completed in this se
 - Frontend production build passed after all changes.
 - Backend syntax checks passed for updated role logic.
 - Database verification confirmed role assignments and seeded data insertion.
+
+### Production Stabilization Updates
+
+- Updated dashboard RBAC so all authenticated roles (`viewer`, `analyst`, `admin`) can read summary/category/trend/recent endpoints.
+- Hardened user sync to heal Firebase UID drift by updating existing users by email before upsert-by-UID.
+- Extended role resolution so admin/analyst can also be matched by local-part aliases (`admin`, `admin+...`, `analyst`, `analyst+...`) and by optional configured email lists.
+- Added frontend role-account bootstrap logic for email/password sign-in flows to reduce manual recovery steps for role accounts.
+
+### Category and Data Consistency Updates
+
+- Normalized record categories to title case at create/update time.
+- Made category filtering case-insensitive and whitespace-tolerant in backend queries.
+- Normalized category labels in record responses and deduplicated category options in the frontend filter dropdown.
+- Seeded additional month-level data spanning late 2025 through 2026 to keep dashboard trend views populated.
