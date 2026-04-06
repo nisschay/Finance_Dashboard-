@@ -265,3 +265,40 @@ Soft delete is integrated into service-layer query patterns so historical data r
 ## 11. Known Limitations and What Would Change in Production
 
 This implementation intentionally prioritizes assignment clarity over full production hardening, so it does not yet include advanced concerns such as distributed cache for Firebase keys, structured centralized error envelopes, observability instrumentation, rate limiting, idempotency safeguards, and migration/versioning workflows beyond schema bootstrap. In a production deployment, these would be added alongside stricter CI validation, managed secrets, infrastructure-level scaling controls, and stronger operational monitoring to support reliability, security, and compliance requirements at scale.
+
+## 12. Session Updates (April 2026)
+
+This section summarizes the concrete implementation changes completed in this session.
+
+### Startup and Logging Hardening
+
+- Updated startup script behavior to avoid leaking database endpoint details in terminal logs.
+- Database precheck output is now generic (no host or port disclosed).
+- Startup and stop scripts were hardened to detect stale listeners on ports 3000 and 8000 and stop project-owned stale processes safely before restart.
+
+### Frontend Authentication UX Redesign
+
+- Rebuilt login page with a tabbed flow for Sign in and Create account.
+- Added email/password authentication and Google popup sign-in.
+- Added client-side validation and human-friendly Firebase error mapping.
+- Added user sync call after successful auth (`POST /users/sync`) before redirecting to dashboard.
+
+### Role Policy Enforcement Changes
+
+- Removed voluntary role switching controls from the frontend so users cannot manually change displayed role.
+- Enforced deterministic backend role mapping in user sync logic:
+    - `admin@finance.dev` -> `admin`
+    - `analyst@finance.dev` -> `analyst`
+    - all other emails -> `viewer`
+- The role mapping is applied during insert and update in user sync, so it is persistent and repeatable.
+
+### Record Entry and Seed Data
+
+- Ensured new record creation opens with an unfilled category field and disabled browser autofill for category input.
+- Added sample database seed records for local testing using idempotent seed notes (`seed-chat-*`), including both admin and analyst-owned records.
+
+### Verification Completed
+
+- Frontend production build passed after all changes.
+- Backend syntax checks passed for updated role logic.
+- Database verification confirmed role assignments and seeded data insertion.

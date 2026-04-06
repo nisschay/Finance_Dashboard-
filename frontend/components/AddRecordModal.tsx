@@ -155,6 +155,7 @@ export default function AddRecordModal({
             <label className="mb-1.5 block text-[12px] font-medium text-gray-500">Category</label>
             <input
               type="text"
+              autoComplete="off"
               placeholder="e.g. Salary, Food, Housing"
               value={draft.category}
               onChange={(event) => updateDraft({ category: event.target.value })}

@@ -1,4 +1,3 @@
-import os
 from typing import Any, Dict, List, Optional
 
 from psycopg2.extensions import connection as PGConnection
@@ -7,21 +6,27 @@ from psycopg2.extras import RealDictCursor
 from database import get_db
 
 
-def _seed_analyst_emails() -> set[str]:
-    raw = os.getenv("ANALYST_EMAILS", "")
-    emails = [item.strip().lower() for item in raw.split(",") if item.strip()]
-    return set(emails)
+ADMIN_EMAIL = "admin@finance.dev"
+ANALYST_EMAIL = "analyst@finance.dev"
 
 
-def _is_seed_analyst(email: str) -> bool:
-    return email.strip().lower() in _seed_analyst_emails()
+def _role_for_email(email: str) -> str:
+    normalized = email.strip().lower()
+
+    if normalized == ADMIN_EMAIL:
+        return "admin"
+
+    if normalized == ANALYST_EMAIL:
+        return "analyst"
+
+    return "viewer"
 
 
 def sync_user(firebase_uid: str, email: str, name: str) -> Dict[str, Any]:
     if not firebase_uid or not email or not name:
         raise ValueError("firebase_uid, email, and name are required")
 
-    role_for_new_user = "analyst" if _is_seed_analyst(email) else "viewer"
+    role_for_user = _role_for_email(email)
 
     with get_db() as db:
         with db.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -32,24 +37,13 @@ def sync_user(firebase_uid: str, email: str, name: str) -> Dict[str, Any]:
                 ON CONFLICT (firebase_uid)
                 DO UPDATE SET
                     email = EXCLUDED.email,
-                    name = EXCLUDED.name
+                    name = EXCLUDED.name,
+                    role = EXCLUDED.role
                 RETURNING id, firebase_uid, email, name, role, status, created_at
                 """,
-                (firebase_uid, email, name, role_for_new_user),
+                (firebase_uid, email, name, role_for_user),
             )
             user = cursor.fetchone()
-
-            if user and role_for_new_user == "analyst" and user["role"] == "viewer":
-                cursor.execute(
-                    """
-                    UPDATE users
-                    SET role = 'analyst'
-                    WHERE id = %s
-                    RETURNING id, firebase_uid, email, name, role, status, created_at
-                    """,
-                    (user["id"],),
-                )
-                user = cursor.fetchone()
 
     if user is None:
         raise RuntimeError("Unable to synchronize user")
