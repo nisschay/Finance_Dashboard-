@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AddRecordModal from "@/components/AddRecordModal";
 import { deleteRecord, getRecords } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { DEV_ROLE_EVENT } from "@/lib/roleOverride";
 import { FinancialRecord, RecordType, RecordsResponse, UserRole } from "@/lib/types";
 
 const PAGE_LIMIT = 20;
@@ -119,19 +118,6 @@ export default function RecordsPage() {
       void loadRecords();
     }
   }, [authLoading, firebaseUser, router, loadRecords]);
-
-  useEffect(() => {
-    const onRoleChange = () => {
-      if (firebaseUser) {
-        void loadRecords();
-      }
-    };
-
-    window.addEventListener(DEV_ROLE_EVENT, onRoleChange);
-    return () => {
-      window.removeEventListener(DEV_ROLE_EVENT, onRoleChange);
-    };
-  }, [firebaseUser, loadRecords]);
 
   const showingStart = recordsResponse.total === 0 ? 0 : (page - 1) * PAGE_LIMIT + 1;
   const showingEnd =

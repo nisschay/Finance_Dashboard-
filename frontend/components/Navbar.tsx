@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 
 import { UserRole } from "@/lib/types";
 
@@ -10,7 +9,6 @@ interface NavbarProps {
   userRole: UserRole | null;
   userEmail: string | null;
   onSignOut: () => void | Promise<void>;
-  onRoleChange?: (newRole: UserRole) => void;
 }
 
 const NAV_LINKS = [
@@ -18,18 +16,8 @@ const NAV_LINKS = [
   { label: "Records", href: "/records" },
 ];
 
-export default function Navbar({ userRole, userEmail, onSignOut, onRoleChange }: NavbarProps) {
+export default function Navbar({ userRole: _userRole, userEmail, onSignOut }: NavbarProps) {
   const pathname = usePathname();
-  const [selectedRole, setSelectedRole] = useState<UserRole>(userRole ?? "viewer");
-
-  useEffect(() => {
-    if (userRole) {
-      setSelectedRole(userRole);
-    }
-  }, [userRole]);
-
-  const showRoleSwitcher =
-    process.env.NODE_ENV === "development" && Boolean(onRoleChange) && Boolean(userRole);
 
   return (
     <header className="h-[52px] border-b border-gray-100 bg-white">
@@ -79,22 +67,6 @@ export default function Navbar({ userRole, userEmail, onSignOut, onRoleChange }:
 
         <div className="flex items-center gap-2">
           {userEmail ? <span className="hidden text-xs text-gray-400 md:inline">{userEmail}</span> : null}
-
-          {showRoleSwitcher ? (
-            <select
-              value={selectedRole}
-              onChange={(event) => {
-                const role = event.target.value as UserRole;
-                setSelectedRole(role);
-                onRoleChange?.(role);
-              }}
-              className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
-            >
-              <option value="viewer">Role: viewer</option>
-              <option value="analyst">Role: analyst</option>
-              <option value="admin">Role: admin</option>
-            </select>
-          ) : null}
 
           <button
             type="button"

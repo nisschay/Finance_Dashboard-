@@ -243,20 +243,20 @@ if not host:
 try:
     socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
 except Exception as exc:
-    print(f"DNS resolution failed for {host}:{port} -> {exc!r}")
+    print("Database DNS resolution failed")
     raise SystemExit(2)
 
 try:
     conn = socket.create_connection((host, port), timeout=5)
     conn.close()
 except Exception as exc:
-    print(f"TCP connection failed for {host}:{port} -> {exc!r}")
+    print("Database TCP connectivity check failed")
     raise SystemExit(3)
 
-print(f"Database network precheck passed for {host}:{port}")
+print("Database network precheck passed")
 PY
   then
-    print_error "Database host is unreachable from this machine. Check network/VPN/firewall and Neon endpoint settings."
+    print_error "Database is unreachable from this machine. Check network/VPN/firewall and endpoint settings."
     exit 1
   fi
 

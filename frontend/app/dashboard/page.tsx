@@ -10,7 +10,6 @@ import {
   getDashboardTrends,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { DEV_ROLE_EVENT } from "@/lib/roleOverride";
 import { CategorySummary, DashboardSummary, FinancialRecord, TrendItem, UserRole } from "@/lib/types";
 
 function formatCurrency(value: number) {
@@ -97,19 +96,6 @@ export default function DashboardPage() {
       void loadDashboard();
     }
   }, [authLoading, firebaseUser, router, loadDashboard]);
-
-  useEffect(() => {
-    const onRoleChange = () => {
-      if (firebaseUser) {
-        void loadDashboard();
-      }
-    };
-
-    window.addEventListener(DEV_ROLE_EVENT, onRoleChange);
-    return () => {
-      window.removeEventListener(DEV_ROLE_EVENT, onRoleChange);
-    };
-  }, [firebaseUser, loadDashboard]);
 
   const categoryRows = useMemo(() => {
     return categories.map((item) => ({
