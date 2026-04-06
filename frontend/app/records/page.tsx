@@ -1,59 +1,113 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import AddRecordModal from "@/components/add-record-modal";
-import { getDashboardByCategory, getRecords } from "@/lib/api";
+import AddRecordModal from "@/components/AddRecordModal";
+import { deleteRecord, getRecords } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { RecordItem, RecordType } from "@/lib/types";
+import { DEV_ROLE_EVENT } from "@/lib/roleOverride";
+import { FinancialRecord, RecordType, RecordsResponse, UserRole } from "@/lib/types";
 
-function asCurrency(value: string | number) {
+const PAGE_LIMIT = 20;
+
+const EMPTY_RESPONSE: RecordsResponse = {
+  data: [],
+  total: 0,
+  page: 1,
+  limit: PAGE_LIMIT,
+};
+
+const ROLE_COLORS: Record<UserRole, { bg: string; text: string }> = {
+  viewer: { bg: "bg-[#E1F5EE]", text: "text-[#085041]" },
+  analyst: { bg: "bg-[#E6F1FB]", text: "text-[#0C447C]" },
+  admin: { bg: "bg-[#FAEEDA]", text: "text-[#633806]" },
+};
+
+const ROLE_MESSAGE: Record<UserRole, string> = {
+  viewer: "You can view records but cannot create or edit them.",
+  analyst: "You can create and edit records but not delete them.",
+  admin: "You can create, edit, and delete any record.",
+};
+
+const TYPE_PILL_CLASS: Record<RecordType, string> = {
+  income: "bg-[#E1F5EE] text-[#085041]",
+  expense: "bg-[#FCEBEB] text-[#791F1F]",
+};
+
+function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number(value));
+  }).format(value);
+}
+
+function truncateNotes(value?: string, maxLength = 40) {
+  if (!value) {
+    return "-";
+  }
+
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 1)}...`;
 }
 
 export default function RecordsPage() {
   const router = useRouter();
   const { firebaseUser, profile, loading: authLoading } = useAuth();
-  const [records, setRecords] = useState<RecordItem[]>([]);
+
+  const [recordsResponse, setRecordsResponse] = useState<RecordsResponse>(EMPTY_RESPONSE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [selectedType, setSelectedType] = useState<RecordType | "">("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [page, setPage] = useState(1);
 
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
 
-  const canCreate = profile?.role === "analyst" || profile?.role === "admin";
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<FinancialRecord | null>(null);
 
-  const loadRecords = async () => {
+  const role = profile?.role ?? "viewer";
+  const roleColor = ROLE_COLORS[role];
+  const canCreate = role === "analyst" || role === "admin";
+  const canEdit = role === "analyst" || role === "admin";
+  const canDelete = role === "admin";
+
+  const loadRecords = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
-
-      const data = await getRecords({
+      const response = await getRecords({
         type: selectedType || undefined,
         category: selectedCategory || undefined,
         from_date: fromDate || undefined,
         to_date: toDate || undefined,
-        page: 1,
-        limit: 20,
+        page,
+        limit: PAGE_LIMIT,
       });
 
-      setRecords(data);
+      setRecordsResponse(response);
+      setCategoryOptions((previous) => {
+        const merged = new Set(previous);
+        response.data.forEach((record) => merged.add(record.category));
+        return Array.from(merged).sort((a, b) => a.localeCompare(b));
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load records");
+      setError(err instanceof Error ? err.message : "Failed to load records.");
+      setRecordsResponse(EMPTY_RESPONSE);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedType, selectedCategory, fromDate, toDate, page]);
 
   useEffect(() => {
     if (!authLoading && !firebaseUser) {
@@ -64,157 +118,252 @@ export default function RecordsPage() {
     if (firebaseUser) {
       void loadRecords();
     }
-  }, [authLoading, firebaseUser, router]);
+  }, [authLoading, firebaseUser, router, loadRecords]);
 
   useEffect(() => {
-    if (firebaseUser) {
-      void loadRecords();
-    }
-  }, [selectedType, selectedCategory, fromDate, toDate]);
-
-  useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const categories = await getDashboardByCategory();
-        setCategoryOptions(categories.map((item) => item.category));
-      } catch {
-        setCategoryOptions([]);
+    const onRoleChange = () => {
+      if (firebaseUser) {
+        void loadRecords();
       }
     };
 
-    if (firebaseUser) {
-      void loadCategories();
-    }
-  }, [firebaseUser]);
+    window.addEventListener(DEV_ROLE_EVENT, onRoleChange);
+    return () => {
+      window.removeEventListener(DEV_ROLE_EVENT, onRoleChange);
+    };
+  }, [firebaseUser, loadRecords]);
 
-  const tableRows = useMemo(() => {
-    return records.map((record) => (
-      <tr key={record.id} className="border-t border-slate-100 text-sm">
-        <td className="px-3 py-2">{record.date}</td>
-        <td className="px-3 py-2">{record.category}</td>
-        <td className="px-3 py-2">
-          <span
-            className={record.type === "income" ? "text-emerald-700" : "text-rose-700"}
-          >
-            {record.type}
-          </span>
-        </td>
-        <td className="px-3 py-2">{asCurrency(record.amount)}</td>
-        <td className="px-3 py-2 text-slate-600">{record.notes || "-"}</td>
-      </tr>
-    ));
-  }, [records]);
+  const showingStart = recordsResponse.total === 0 ? 0 : (page - 1) * PAGE_LIMIT + 1;
+  const showingEnd =
+    recordsResponse.total === 0 ? 0 : Math.min(page * PAGE_LIMIT, recordsResponse.total);
+
+  const canGoPrevious = page > 1;
+  const canGoNext = page * PAGE_LIMIT < recordsResponse.total;
+
+  const emptyColSpan = canEdit ? 6 : 5;
+
+  const visibleRows = useMemo(() => {
+    return recordsResponse.data.map((record) => {
+      const amountColor = record.type === "income" ? "text-[#0F6E56]" : "text-[#A32D2D]";
+
+      return (
+        <tr key={record.id} className="border-b border-gray-100 text-[13px] text-gray-700">
+          <td className="px-5 py-2.5">{record.date.slice(0, 10)}</td>
+          <td className="px-5 py-2.5">{record.category}</td>
+          <td className="px-5 py-2.5">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TYPE_PILL_CLASS[record.type]}`}>
+              {record.type}
+            </span>
+          </td>
+          <td className={`px-5 py-2.5 font-medium ${amountColor}`}>{formatCurrency(record.amount)}</td>
+          <td className="max-w-[280px] px-5 py-2.5 text-gray-500">{truncateNotes(record.notes)}</td>
+          {canEdit ? (
+            <td className="px-5 py-2.5">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingRecord(record);
+                    setIsModalOpen(true);
+                  }}
+                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-500"
+                >
+                  Edit
+                </button>
+                {canDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const confirmed = window.confirm("Delete this record?");
+                      if (!confirmed) {
+                        return;
+                      }
+
+                      void (async () => {
+                        try {
+                          await deleteRecord(record.id);
+                          await loadRecords();
+                        } catch (err) {
+                          setError(
+                            err instanceof Error ? err.message : "Failed to delete the selected record.",
+                          );
+                        }
+                      })();
+                    }}
+                    className="rounded-md border border-gray-200 px-2 py-1 text-xs text-red-500"
+                  >
+                    Delete
+                  </button>
+                ) : null}
+              </div>
+            </td>
+          ) : null}
+        </tr>
+      );
+    });
+  }, [recordsResponse.data, canEdit, canDelete, loadRecords]);
 
   if (authLoading || (!firebaseUser && !error)) {
-    return <p className="text-sm text-slate-600">Checking session...</p>;
+    return <p className="text-sm text-gray-400">Checking session...</p>;
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Records</h1>
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-[18px] font-medium text-gray-900">Records</h1>
         <button
           type="button"
           disabled={!canCreate}
-          onClick={() => setIsModalOpen(true)}
-          className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          Add Record
-        </button>
-      </div>
-
-      <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-5">
-        <select
-          value={selectedType}
-          onChange={(event) => setSelectedType(event.target.value as RecordType | "")}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">All Types</option>
-          <option value="income">Income</option>
-          <option value="expense">Expense</option>
-        </select>
-
-        <select
-          value={selectedCategory}
-          onChange={(event) => setSelectedCategory(event.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">All Categories</option>
-          {categoryOptions.map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
-          ))}
-        </select>
-
-        <input
-          type="date"
-          value={fromDate}
-          onChange={(event) => setFromDate(event.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-
-        <input
-          type="date"
-          value={toDate}
-          onChange={(event) => setToDate(event.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-
-        <button
-          type="button"
           onClick={() => {
-            setSelectedType("");
-            setSelectedCategory("");
-            setFromDate("");
-            setToDate("");
+            setEditingRecord(null);
+            setIsModalOpen(true);
           }}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          className="rounded-lg bg-[#1D9E75] px-3.5 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Clear Filters
+          Add record
         </button>
-      </section>
-
-      {loading ? <p className="text-sm text-slate-600">Loading records...</p> : null}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {!canCreate ? (
-        <p className="text-sm text-amber-700">
-          Your role can view records but cannot create new ones.
-        </p>
-      ) : null}
-
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2">Category</th>
-              <th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2">Amount</th>
-              <th className="px-3 py-2">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
-                  No records found for current filters.
-                </td>
-              </tr>
-            ) : (
-              tableRows
-            )}
-          </tbody>
-        </table>
       </div>
+
+      <div className="rounded-lg border border-gray-100 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-500">
+        {ROLE_MESSAGE[role]} <span className={`rounded px-1.5 py-0.5 text-xs ${roleColor.bg} ${roleColor.text}`}>{role}</span>
+      </div>
+
+      {loading ? <p className="text-sm text-gray-400">Loading records...</p> : null}
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      <article className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-none">
+        <div className="flex flex-wrap gap-2 border-b border-gray-100 px-5 py-3">
+          <select
+            value={selectedType}
+            onChange={(event) => {
+              setSelectedType(event.target.value as RecordType | "");
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+          >
+            <option value="">All types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+
+          <select
+            value={selectedCategory}
+            onChange={(event) => {
+              setSelectedCategory(event.target.value);
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+          >
+            <option value="">All categories</option>
+            {categoryOptions.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(event) => {
+              setFromDate(event.target.value);
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+          />
+
+          <input
+            type="date"
+            value={toDate}
+            onChange={(event) => {
+              setToDate(event.target.value);
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm"
+          />
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedType("");
+              setSelectedCategory("");
+              setFromDate("");
+              setToDate("");
+              setPage(1);
+            }}
+            className="px-1 text-sm text-[#1D9E75]"
+          >
+            Clear filters
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                <th className="px-5 py-2.5">Date</th>
+                <th className="px-5 py-2.5">Category</th>
+                <th className="px-5 py-2.5">Type</th>
+                <th className="px-5 py-2.5">Amount</th>
+                <th className="px-5 py-2.5">Notes</th>
+                {canEdit ? <th className="px-5 py-2.5">Actions</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {recordsResponse.data.length === 0 ? (
+                <tr>
+                  <td colSpan={emptyColSpan} className="px-5 py-8 text-center text-[13px] text-gray-400">
+                    No records found for current filters.
+                  </td>
+                </tr>
+              ) : (
+                visibleRows
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-sm text-gray-400">
+          <p>
+            Showing {showingStart}-{showingEnd} of {recordsResponse.total} records
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!canGoPrevious}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={!canGoNext}
+              onClick={() => setPage((current) => current + 1)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </article>
 
       <AddRecordModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onCreated={(record) => {
-          setRecords((prev) => [record, ...prev]);
+        mode={editingRecord ? "edit" : "create"}
+        userRole={role}
+        initialRecord={editingRecord}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingRecord(null);
+        }}
+        onSaved={() => {
+          setIsModalOpen(false);
+          setEditingRecord(null);
+          void loadRecords();
         }}
       />
-    </div>
+    </section>
   );
 }

@@ -2,9 +2,11 @@ export type UserRole = "viewer" | "analyst" | "admin";
 export type UserStatus = "active" | "inactive";
 export type RecordType = "income" | "expense";
 
-export interface AppUser {
-  id: number;
+export interface User {
+  id: string;
+  firebase_uid: string;
   email: string;
+  name: string;
   role: UserRole;
   status: UserStatus;
 }
@@ -15,17 +17,15 @@ export interface SyncUserPayload {
   name: string;
 }
 
-export interface RecordItem {
-  id: number;
-  user_id: number;
-  amount: string;
+export interface FinancialRecord {
+  id: string;
+  user_id: string;
+  amount: number;
   type: RecordType;
   category: string;
   date: string;
-  notes: string | null;
-  is_deleted: boolean;
+  notes?: string;
   created_at: string;
-  updated_at: string;
 }
 
 export interface CreateRecordPayload {
@@ -33,6 +33,14 @@ export interface CreateRecordPayload {
   type: RecordType;
   category: string;
   date: string;
+  notes?: string;
+}
+
+export interface UpdateRecordPayload {
+  amount?: number;
+  type?: RecordType;
+  category?: string;
+  date?: string;
   notes?: string;
 }
 
@@ -46,22 +54,31 @@ export interface GetRecordsParams {
 }
 
 export interface DashboardSummary {
-  total_income: string;
-  total_expenses: string;
-  net_balance: string;
+  total_income: number;
+  total_expenses: number;
   total_records: number;
+  net_balance: number;
+}
+
+export interface RecordsResponse {
+  data: FinancialRecord[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export interface CategorySummary {
   category: string;
-  total_income: string;
-  total_expense: string;
-  net: string;
+  total_income: number;
+  total_expenses: number;
 }
 
 export interface TrendItem {
   month: string;
-  total_income: string;
-  total_expenses: string;
-  net: string;
+  total_income: number;
+  total_expenses: number;
+  net: number;
 }
+
+export type AppUser = User;
+export type RecordItem = FinancialRecord;

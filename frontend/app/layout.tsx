@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import Navbar from "@/components/navbar";
+import NavbarShell from "@/components/navbar-shell";
 import Providers from "@/components/providers";
 
 import "./globals.css";
@@ -15,10 +15,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>
+      <body className="bg-gray-50 text-gray-900">
         <Providers>
-          <Navbar />
-          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+          <NavbarShell />
+          <main className="mx-auto w-full max-w-6xl px-4 py-5">{children}</main>
         </Providers>
       </body>
     </html>

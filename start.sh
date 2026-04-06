@@ -65,6 +65,85 @@ require_file() {
   fi
 }
 
+find_pid_on_port() {
+  local port="$1"
+  local pid=""
+
+  if command -v ss >/dev/null 2>&1; then
+    pid="$(ss -ltnp 2>/dev/null | awk -v p=":$port" '
+      /LISTEN/ && index($4, p) > 0 {
+        if (match($0, /pid=[0-9]+/)) {
+          print substr($0, RSTART + 4, RLENGTH - 4)
+          exit
+        }
+      }
+    ')"
+    if [[ -n "$pid" ]]; then
+      echo "$pid"
+      return
+    fi
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    pid="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
+    if [[ -n "$pid" ]]; then
+      echo "$pid"
+      return
+    fi
+  fi
+
+  echo ""
+}
+
+stop_pid_gracefully() {
+  local pid="$1"
+  local label="$2"
+
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    return
+  fi
+
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+
+  for _ in {1..5}; do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      print_info "$label (PID $pid) stopped"
+      return
+    fi
+    sleep 1
+  done
+
+  kill -KILL "$pid" >/dev/null 2>&1 || true
+
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    print_info "$label (PID $pid) force stopped"
+  fi
+}
+
+ensure_port_ready() {
+  local port="$1"
+  local service_name="$2"
+  local pid
+  pid="$(find_pid_on_port "$port")"
+
+  if [[ -z "$pid" ]]; then
+    return
+  fi
+
+  local cmd
+  cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+
+  if [[ -n "$cmd" && "$cmd" == *"$ROOT_DIR"* ]]; then
+    print_info "Port $port occupied by stale project process (PID $pid). Stopping it."
+    stop_pid_gracefully "$pid" "$service_name"
+    return
+  fi
+
+  print_error "Port $port is already in use by PID $pid.${cmd:+ Command: $cmd}"
+  print_error "Stop the conflicting process or change port configuration, then retry ./start.sh"
+  exit 1
+}
+
 load_backend_env() {
   while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
     local line="$raw_line"
@@ -265,6 +344,8 @@ check_python_version
 check_node_version
 require_file "$BACKEND_DIR/.env" "backend/.env is missing. Create it before running start.sh"
 require_file "$FRONTEND_DIR/.env.local" "frontend/.env.local is missing. Create it before running start.sh"
+ensure_port_ready 8000 "Backend"
+ensure_port_ready 3000 "Frontend"
 ensure_dirs
 load_backend_env
 ensure_backend_venv

@@ -21,7 +21,8 @@ import {
 import { getMe, syncUser } from "@/lib/api";
 import { auth, googleProvider } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
-import { AppUser } from "@/lib/types";
+import { getDevRole, isUserRole } from "@/lib/roleOverride";
+import { User as AppUser } from "@/lib/types";
 
 interface AuthContextValue {
   firebaseUser: User | null;
@@ -61,6 +62,19 @@ function shouldFallbackToRedirect(error: unknown): boolean {
   return Boolean(code && POPUP_FALLBACK_ERROR_CODES.has(code));
 }
 
+function applyRoleOverride(profile: AppUser): AppUser {
+  const overrideRole = getDevRole();
+
+  if (!isUserRole(overrideRole)) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    role: overrideRole,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AppUser | null>(null);
@@ -70,9 +84,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = async () => {
     try {
       const me = await getMe();
-      setProfile(me);
+      const effectiveProfile = applyRoleOverride(me);
+      setProfile(effectiveProfile);
       setError(null);
-      logger.info("auth", "Profile refreshed", { userId: me.id, role: me.role });
+      logger.info("auth", "Profile refreshed", {
+        userId: effectiveProfile.id,
+        role: effectiveProfile.role,
+      });
     } catch (err) {
       setProfile(null);
       setError(err instanceof Error ? err.message : "Failed to load profile");

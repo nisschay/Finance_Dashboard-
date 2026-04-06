@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   getDashboardByCategory,
@@ -10,54 +10,82 @@ import {
   getDashboardTrends,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { logger } from "@/lib/logger";
-import { CategorySummary, DashboardSummary, RecordItem, TrendItem } from "@/lib/types";
+import { DEV_ROLE_EVENT } from "@/lib/roleOverride";
+import { CategorySummary, DashboardSummary, FinancialRecord, TrendItem, UserRole } from "@/lib/types";
 
-function asCurrency(value: string | number) {
+function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number(value));
+  }).format(value);
 }
+
+const ROLE_COLORS: Record<UserRole, { bg: string; text: string }> = {
+  viewer: { bg: "bg-[#E1F5EE]", text: "text-[#085041]" },
+  analyst: { bg: "bg-[#E6F1FB]", text: "text-[#0C447C]" },
+  admin: { bg: "bg-[#FAEEDA]", text: "text-[#633806]" },
+};
+
+const ROLE_MESSAGE: Record<UserRole, string> = {
+  viewer: "You can view dashboard data. Analysts and admins can manage records.",
+  analyst: "You can view data and create or edit records.",
+  admin: "You have full access including user management and deletion.",
+};
+
+const EMPTY_SUMMARY: DashboardSummary = {
+  total_income: 0,
+  total_expenses: 0,
+  net_balance: 0,
+  total_records: 0,
+};
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { firebaseUser, loading: authLoading } = useAuth();
+  const { firebaseUser, profile, loading: authLoading } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
-  const [recent, setRecent] = useState<RecordItem[]>([]);
+  const [recent, setRecent] = useState<FinancialRecord[]>([]);
   const [trends, setTrends] = useState<TrendItem[]>([]);
 
-  const loadDashboard = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      logger.info("dashboard", "Loading dashboard data");
-      const [summaryData, categoryData, recentData, trendData] = await Promise.all([
-        getDashboardSummary(),
-        getDashboardByCategory(),
-        getDashboardRecent(10),
-        getDashboardTrends(6),
-      ]);
+  const role = profile?.role ?? "viewer";
+  const roleColor = ROLE_COLORS[role];
 
-      setSummary(summaryData);
-      setCategories(categoryData);
-      setRecent(recentData);
-      setTrends(trendData);
-      logger.info("dashboard", "Dashboard data loaded", {
-        categories: categoryData.length,
-        recent: recentData.length,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load dashboard");
-      logger.error("dashboard", "Failed to load dashboard", err);
-    } finally {
-      setLoading(false);
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    const [summaryResult, recentResult, categoryResult, trendsResult] = await Promise.allSettled([
+      getDashboardSummary(),
+      getDashboardRecent(10),
+      getDashboardByCategory(),
+      getDashboardTrends(6),
+    ]);
+
+    if (summaryResult.status === "fulfilled") {
+      setSummary(summaryResult.value);
+    } else {
+      setSummary(EMPTY_SUMMARY);
     }
-  };
+
+    setRecent(recentResult.status === "fulfilled" ? recentResult.value : []);
+    setCategories(categoryResult.status === "fulfilled" ? categoryResult.value : []);
+    setTrends(trendsResult.status === "fulfilled" ? trendsResult.value : []);
+
+    const failedCalls = [summaryResult, recentResult, categoryResult, trendsResult].filter(
+      (result) => result.status === "rejected",
+    ).length;
+
+    if (failedCalls > 0) {
+      setError("Some dashboard data could not be loaded with your current permissions.");
+    }
+
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !firebaseUser) {
@@ -68,127 +96,150 @@ export default function DashboardPage() {
     if (firebaseUser) {
       void loadDashboard();
     }
-  }, [authLoading, firebaseUser, router]);
+  }, [authLoading, firebaseUser, router, loadDashboard]);
 
-  const cards = useMemo(
-    () => [
-      {
-        label: "Total Income",
-        value: asCurrency(summary?.total_income ?? 0),
-        tone: "text-emerald-700",
-      },
-      {
-        label: "Total Expenses",
-        value: asCurrency(summary?.total_expenses ?? 0),
-        tone: "text-rose-700",
-      },
-      {
-        label: "Net Balance",
-        value: asCurrency(summary?.net_balance ?? 0),
-        tone: "text-sky-700",
-      },
-    ],
-    [summary],
-  );
+  useEffect(() => {
+    const onRoleChange = () => {
+      if (firebaseUser) {
+        void loadDashboard();
+      }
+    };
+
+    window.addEventListener(DEV_ROLE_EVENT, onRoleChange);
+    return () => {
+      window.removeEventListener(DEV_ROLE_EVENT, onRoleChange);
+    };
+  }, [firebaseUser, loadDashboard]);
+
+  const categoryRows = useMemo(() => {
+    return categories.map((item) => ({
+      category: item.category,
+      total: item.total_income - item.total_expenses,
+    }));
+  }, [categories]);
 
   if (authLoading || (!firebaseUser && !error)) {
-    return <p className="text-sm text-slate-600">Checking session...</p>;
+    return <p className="text-sm text-gray-400">Checking session...</p>;
   }
 
   return (
-    <div className="space-y-6">
+    <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1 className="text-[18px] font-medium text-gray-900">Dashboard</h1>
         <button
           type="button"
           onClick={() => void loadDashboard()}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+          className="rounded-lg border border-gray-200 bg-white px-3.5 py-1.5 text-sm text-gray-500"
         >
           Refresh
         </button>
       </div>
 
-      {loading ? <p className="text-sm text-slate-600">Loading dashboard...</p> : null}
+      <div className="rounded-lg border border-gray-100 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-500">
+        <span className={`mr-1 rounded px-1.5 py-0.5 text-xs ${roleColor.bg} ${roleColor.text}`}>{role}</span>
+        {ROLE_MESSAGE[role]}
+      </div>
+
+      {loading ? <p className="text-sm text-gray-400">Loading dashboard...</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      <section className="grid gap-4 md:grid-cols-3">
-        {cards.map((card) => (
-          <article key={card.label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-sm text-slate-500">{card.label}</p>
-            <p className={`mt-2 text-xl font-semibold ${card.tone}`}>{card.value}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-2">
-        <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold">Recent Activity</h2>
-          <ul className="space-y-2 text-sm">
-            {recent.length === 0 ? <li className="text-slate-500">No recent records.</li> : null}
-            {recent.map((item) => (
-              <li key={item.id} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-                <div>
-                  <p className="font-medium text-slate-800">{item.category}</p>
-                  <p className="text-xs text-slate-500">{item.date}</p>
-                </div>
-                <p className={item.type === "income" ? "text-emerald-700" : "text-rose-700"}>
-                  {asCurrency(item.amount)}
-                </p>
-              </li>
-            ))}
-          </ul>
+      <div className="grid gap-3 md:grid-cols-3">
+        <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-none">
+          <p className="text-[12px] text-gray-400">Total Income</p>
+          <p className="mt-1.5 text-[22px] font-medium text-[#0F6E56]">
+            {formatCurrency(summary.total_income)}
+          </p>
         </article>
 
-        <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold">Category Breakdown</h2>
-          <ul className="space-y-2 text-sm">
-            {categories.length === 0 ? <li className="text-slate-500">No category data yet.</li> : null}
-            {categories.map((row) => (
-              <li key={row.category} className="rounded-md bg-slate-50 px-3 py-2">
-                <p className="font-medium text-slate-800">{row.category}</p>
-                <div className="mt-1 flex items-center gap-4 text-xs text-slate-600">
-                  <span>Income: {asCurrency(row.total_income)}</span>
-                  <span>Expense: {asCurrency(row.total_expense)}</span>
-                  <span className="font-medium">Net: {asCurrency(row.net)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
+        <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-none">
+          <p className="text-[12px] text-gray-400">Total Expenses</p>
+          <p className="mt-1.5 text-[22px] font-medium text-[#A32D2D]">
+            {formatCurrency(summary.total_expenses)}
+          </p>
         </article>
-      </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold">Monthly Trends</h2>
+        <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-none">
+          <p className="text-[12px] text-gray-400">Net Balance</p>
+          <p className="mt-1.5 text-[22px] font-medium text-[#185FA5]">
+            {formatCurrency(summary.net_balance)}
+          </p>
+        </article>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-none">
+          <h2 className="mb-3 text-[13px] font-medium text-gray-900">Recent activity</h2>
+          {recent.length === 0 ? (
+            <p className="py-6 text-center text-[13px] text-gray-400">No recent records.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {recent.map((item) => {
+                const amountText = `${item.type === "income" ? "+" : "-"}${formatCurrency(
+                  item.amount,
+                )}`;
+                const amountColor = item.type === "income" ? "text-[#0F6E56]" : "text-[#A32D2D]";
+
+                return (
+                  <li key={item.id} className="flex items-center justify-between py-2 text-[13px]">
+                    <span className="text-gray-700">{item.category}</span>
+                    <span className={`font-medium ${amountColor}`}>{amountText}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </article>
+
+        <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-none">
+          <h2 className="mb-3 text-[13px] font-medium text-gray-900">Category breakdown</h2>
+          {categoryRows.length === 0 ? (
+            <p className="py-6 text-center text-[13px] text-gray-400">No category data yet.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {categoryRows.map((row) => (
+                <li key={row.category} className="flex items-center justify-between py-2 text-[13px]">
+                  <span className="text-gray-700">{row.category}</span>
+                  <span className="font-medium text-gray-700">{formatCurrency(row.total)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+      </div>
+
+      <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-none">
+        <h2 className="mb-3 text-[13px] font-medium text-gray-900">Monthly trends</h2>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full">
             <thead>
-              <tr className="text-left text-slate-500">
-                <th className="pb-2">Month</th>
-                <th className="pb-2">Income</th>
-                <th className="pb-2">Expenses</th>
-                <th className="pb-2">Net</th>
+              <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                <th className="px-2 py-2">Month</th>
+                <th className="px-2 py-2">Income</th>
+                <th className="px-2 py-2">Expenses</th>
+                <th className="px-2 py-2">Net</th>
               </tr>
             </thead>
             <tbody>
               {trends.length === 0 ? (
                 <tr>
-                  <td className="py-2 text-slate-500" colSpan={4}>
+                  <td colSpan={4} className="px-2 py-6 text-center text-[13px] text-gray-400">
                     No trend data available.
                   </td>
                 </tr>
-              ) : null}
-              {trends.map((item) => (
-                <tr key={item.month} className="border-t border-slate-100">
-                  <td className="py-2 font-medium">{item.month}</td>
-                  <td className="py-2">{asCurrency(item.total_income)}</td>
-                  <td className="py-2">{asCurrency(item.total_expenses)}</td>
-                  <td className="py-2">{asCurrency(item.net)}</td>
-                </tr>
-              ))}
+              ) : (
+                trends.map((item) => (
+                  <tr key={item.month} className="border-b border-gray-100 text-[13px]">
+                    <td className="px-2 py-2 text-gray-400">{item.month}</td>
+                    <td className="px-2 py-2 text-[#0F6E56]">{formatCurrency(item.total_income)}</td>
+                    <td className="px-2 py-2 text-[#A32D2D]">{formatCurrency(item.total_expenses)}</td>
+                    <td className="px-2 py-2 text-[#185FA5]">{formatCurrency(item.net)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
+      </article>
+    </section>
   );
 }

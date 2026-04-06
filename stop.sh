@@ -49,15 +49,29 @@ stop_from_pid_file() {
 
 find_pid_on_port() {
   local port="$1"
-
-  if command -v lsof >/dev/null 2>&1; then
-    lsof -ti tcp:"$port" -sTCP:LISTEN | head -n1
-    return
-  fi
+  local pid=""
 
   if command -v ss >/dev/null 2>&1; then
-    ss -ltnp "sport = :$port" 2>/dev/null | awk -F'pid=' 'NR>1 {split($2,a,","); print a[1]}' | head -n1
-    return
+    pid="$(ss -ltnp 2>/dev/null | awk -v p=":$port" '
+      /LISTEN/ && index($4, p) > 0 {
+        if (match($0, /pid=[0-9]+/)) {
+          print substr($0, RSTART + 4, RLENGTH - 4)
+          exit
+        }
+      }
+    ')"
+    if [[ -n "$pid" ]]; then
+      echo "$pid"
+      return
+    fi
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    pid="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
+    if [[ -n "$pid" ]]; then
+      echo "$pid"
+      return
+    fi
   fi
 
   echo ""
