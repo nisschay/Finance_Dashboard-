@@ -55,6 +55,14 @@ function truncateNotes(value?: string, maxLength = 40) {
   return `${value.slice(0, maxLength - 1)}...`;
 }
 
+function normalizeCategoryLabel(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export default function RecordsPage() {
   const router = useRouter();
   const { firebaseUser, profile, loading: authLoading } = useAuth();
@@ -96,9 +104,19 @@ export default function RecordsPage() {
 
       setRecordsResponse(response);
       setCategoryOptions((previous) => {
-        const merged = new Set(previous);
-        response.data.forEach((record) => merged.add(record.category));
-        return Array.from(merged).sort((a, b) => a.localeCompare(b));
+        const merged = new Map<string, string>();
+
+        previous.forEach((category) => {
+          const normalized = normalizeCategoryLabel(category);
+          merged.set(normalized.toLowerCase(), normalized);
+        });
+
+        response.data.forEach((record) => {
+          const normalized = normalizeCategoryLabel(record.category);
+          merged.set(normalized.toLowerCase(), normalized);
+        });
+
+        return Array.from(merged.values()).sort((a, b) => a.localeCompare(b));
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load records.");

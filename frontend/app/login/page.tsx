@@ -4,7 +4,6 @@ import {
   GoogleAuthProvider,
   User,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
 } from "firebase/auth";
@@ -15,7 +14,65 @@ import { useAuth } from "@/lib/auth-context";
 import { auth } from "@/lib/firebase";
 
 type AuthTab = "signin" | "create";
-type LoadingAction = "signin" | "create" | "google" | "reset" | null;
+type LoadingAction = "signin" | "create" | "google" | null;
+
+const DEFAULT_ADMIN_EMAIL = "admin@finance.dev";
+const DEFAULT_ANALYST_EMAIL = "analyst@finance.dev";
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parseRoleEmails(raw: string | undefined, fallback: string): Set<string> {
+  const emails = (raw || "")
+    .split(",")
+    .map((entry) => normalizeEmail(entry))
+    .filter((entry) => entry.length > 0);
+
+  return new Set([fallback, ...emails]);
+}
+
+const ADMIN_ROLE_EMAILS = parseRoleEmails(
+  process.env.NEXT_PUBLIC_ADMIN_ROLE_EMAILS,
+  DEFAULT_ADMIN_EMAIL,
+);
+const ANALYST_ROLE_EMAILS = parseRoleEmails(
+  process.env.NEXT_PUBLIC_ANALYST_ROLE_EMAILS,
+  DEFAULT_ANALYST_EMAIL,
+);
+
+const ADMIN_BOOTSTRAP_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_BOOTSTRAP_PASSWORD || "";
+const ANALYST_BOOTSTRAP_PASSWORD = process.env.NEXT_PUBLIC_ANALYST_BOOTSTRAP_PASSWORD || "";
+
+function getEmailLocalPart(email: string): string {
+  return normalizeEmail(email).split("@")[0] || "";
+}
+
+function isAdminEmail(email: string): boolean {
+  const normalized = normalizeEmail(email);
+  const localPart = getEmailLocalPart(normalized);
+
+  return ADMIN_ROLE_EMAILS.has(normalized) || localPart === "admin" || localPart.startsWith("admin+");
+}
+
+function isAnalystEmail(email: string): boolean {
+  const normalized = normalizeEmail(email);
+  const localPart = getEmailLocalPart(normalized);
+
+  return ANALYST_ROLE_EMAILS.has(normalized) || localPart === "analyst" || localPart.startsWith("analyst+");
+}
+
+function isRoleBootstrapEmail(email: string): boolean {
+  return isAdminEmail(email) || isAnalystEmail(email);
+}
+
+function isFirebaseErrorWithCode(error: unknown, code: string): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  return String((error as { code?: unknown }).code || "") === code;
+}
 
 function mapAuthError(error: unknown): string {
   const code =
@@ -29,7 +86,7 @@ function mapAuthError(error: unknown): string {
     case "auth/wrong-password":
       return "Incorrect password. Please try again.";
     case "auth/invalid-credential":
-      return "Invalid email or password. Use Forgot password to reset it.";
+      return "Invalid email or password.";
     case "auth/email-already-in-use":
       return "An account with this email already exists.";
     case "auth/weak-password":
@@ -171,10 +228,68 @@ export default function LoginPage() {
     setLoadingAction("signin");
 
     try {
-      const result = await signInWithEmailAndPassword(auth, email.trim(), password);
-      const fallbackName = result.user.displayName ?? result.user.email?.split("@")[0] ?? "User";
-      await syncUserAfterAuth(result.user, fallbackName);
-      router.push("/dashboard");
+      const normalizedEmail = normalizeEmail(email);
+
+      const finalizeLogin = async (user: User) => {
+        const fallbackName = user.displayName ?? user.email?.split("@")[0] ?? "User";
+        await syncUserAfterAuth(user, fallbackName);
+        router.push("/dashboard");
+      };
+
+      try {
+        const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        await finalizeLogin(result.user);
+        return;
+      } catch (signInError) {
+        if (!isRoleBootstrapEmail(normalizedEmail)) {
+          throw signInError;
+        }
+
+        if (!isFirebaseErrorWithCode(signInError, "auth/invalid-credential")) {
+          throw signInError;
+        }
+
+        try {
+          const created = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+          await finalizeLogin(created.user);
+          return;
+        } catch (createError) {
+          if (!isFirebaseErrorWithCode(createError, "auth/email-already-in-use")) {
+            throw createError;
+          }
+
+          const fallbackPasswords: string[] = [];
+          if (isAdminEmail(normalizedEmail) && ADMIN_BOOTSTRAP_PASSWORD) {
+            fallbackPasswords.push(ADMIN_BOOTSTRAP_PASSWORD);
+          }
+          if (isAnalystEmail(normalizedEmail) && ANALYST_BOOTSTRAP_PASSWORD) {
+            fallbackPasswords.push(ANALYST_BOOTSTRAP_PASSWORD);
+          }
+
+          for (const candidate of fallbackPasswords) {
+            if (!candidate || candidate === password) {
+              continue;
+            }
+
+            try {
+              const fallbackSignIn = await signInWithEmailAndPassword(
+                auth,
+                normalizedEmail,
+                candidate,
+              );
+              await finalizeLogin(fallbackSignIn.user);
+              return;
+            } catch {
+              // Try the next configured candidate password.
+            }
+          }
+
+          setError(
+            "Role account exists but password does not match. Use the configured bootstrap password.",
+          );
+          return;
+        }
+      }
     } catch (err) {
       setError(mapAuthError(err));
     } finally {
@@ -224,30 +339,6 @@ export default function LoginPage() {
         (name.trim() || result.user.email?.split("@")[0] || "User");
       await syncUserAfterAuth(result.user, fallbackName);
       router.push("/dashboard");
-    } catch (err) {
-      setError(mapAuthError(err));
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
-  const onForgotPasswordClick = async () => {
-    if (!auth) {
-      setError("Authentication is not initialized.");
-      return;
-    }
-
-    if (!email.trim()) {
-      setError("Enter your email first, then click Forgot password.");
-      return;
-    }
-
-    setError("");
-    setLoadingAction("reset");
-
-    try {
-      await sendPasswordResetEmail(auth, email.trim());
-      setError("Password reset email sent. Check your inbox and spam folder.");
     } catch (err) {
       setError(mapAuthError(err));
     } finally {
@@ -346,19 +437,6 @@ export default function LoginPage() {
             className="h-[38px] w-full rounded-md border border-gray-200 px-3 text-sm text-gray-800 outline-none focus:border-[#1D9E75] focus:shadow-[0_0_0_3px_rgba(29,158,117,0.12)]"
             style={{ borderWidth: "0.5px" }}
           />
-
-          {tab === "signin" ? (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => void onForgotPasswordClick()}
-                className="text-sm text-[#1D9E75] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loadingAction === "reset" ? "Sending reset email..." : "Forgot password?"}
-              </button>
-            </div>
-          ) : null}
 
           {tab === "signin" ? (
             <button

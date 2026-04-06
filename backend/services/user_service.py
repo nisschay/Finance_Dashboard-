@@ -24,11 +24,12 @@ ANALYST_EMAILS = _configured_emails("ANALYST_ROLE_EMAILS", ANALYST_EMAIL)
 
 def role_for_email(email: str) -> str:
     normalized = email.strip().lower()
+    local_part = normalized.split("@", 1)[0] if "@" in normalized else normalized
 
-    if normalized in ADMIN_EMAILS:
+    if normalized in ADMIN_EMAILS or local_part == "admin" or local_part.startswith("admin+"):
         return "admin"
 
-    if normalized in ANALYST_EMAILS:
+    if normalized in ANALYST_EMAILS or local_part == "analyst" or local_part.startswith("analyst+"):
         return "analyst"
 
     return "viewer"

@@ -51,13 +51,13 @@ def get_by_category(db: PGConnection) -> List[Dict[str, Any]]:
         cursor.execute(
             """
             SELECT
-                category,
+                INITCAP(TRIM(category)) AS category,
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS total_income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS total_expense
             FROM financial_records
             WHERE is_deleted = FALSE
-            GROUP BY category
-            ORDER BY category ASC
+            GROUP BY INITCAP(TRIM(category))
+            ORDER BY INITCAP(TRIM(category)) ASC
             """
         )
         rows = cursor.fetchall()
@@ -132,7 +132,7 @@ def get_recent_activity(db: PGConnection, limit: int = 10) -> List[Dict[str, Any
     with db.cursor(cursor_factory=RealDictCursor) as cursor:
         cursor.execute(
             """
-            SELECT id, user_id, amount, type, category, date, notes, is_deleted, created_at, updated_at
+            SELECT id, user_id, amount, type, INITCAP(TRIM(category)) AS category, date, notes, is_deleted, created_at, updated_at
             FROM financial_records
             WHERE is_deleted = FALSE
             ORDER BY date DESC, created_at DESC

@@ -9,7 +9,14 @@ from models.record import RecordCreate, RecordFilter, RecordUpdate
 logger = get_logger(__name__)
 
 
+def _normalize_category(value: str) -> str:
+    collapsed = " ".join(value.strip().split())
+    return collapsed.title()
+
+
 def create_record(db: PGConnection, user_id: int, data: RecordCreate) -> Dict[str, Any]:
+    normalized_category = _normalize_category(data.category)
+
     with db.cursor(cursor_factory=RealDictCursor) as cursor:
         cursor.execute(
             """
@@ -17,7 +24,7 @@ def create_record(db: PGConnection, user_id: int, data: RecordCreate) -> Dict[st
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id, user_id, amount, type, category, date, notes, is_deleted, created_at, updated_at
             """,
-            (user_id, data.amount, data.type, data.category, data.date, data.notes),
+            (user_id, data.amount, data.type, normalized_category, data.date, data.notes),
         )
         row = cursor.fetchone()
 
@@ -41,7 +48,7 @@ def get_records(db: PGConnection, filters: RecordFilter) -> List[Dict[str, Any]]
         params.append(filters.type)
 
     if filters.category:
-        where_clauses.append("category = %s")
+        where_clauses.append("LOWER(TRIM(category)) = LOWER(TRIM(%s))")
         params.append(filters.category)
 
     if filters.from_date:
@@ -56,7 +63,7 @@ def get_records(db: PGConnection, filters: RecordFilter) -> List[Dict[str, Any]]
     params.extend([filters.limit, offset])
 
     query = f"""
-        SELECT id, user_id, amount, type, category, date, notes, is_deleted, created_at, updated_at
+        SELECT id, user_id, amount, type, INITCAP(TRIM(category)) AS category, date, notes, is_deleted, created_at, updated_at
         FROM financial_records
         WHERE {' AND '.join(where_clauses)}
         ORDER BY date DESC, created_at DESC
@@ -74,7 +81,7 @@ def get_record_by_id(db: PGConnection, record_id: int) -> Optional[Dict[str, Any
     with db.cursor(cursor_factory=RealDictCursor) as cursor:
         cursor.execute(
             """
-            SELECT id, user_id, amount, type, category, date, notes, is_deleted, created_at, updated_at
+            SELECT id, user_id, amount, type, INITCAP(TRIM(category)) AS category, date, notes, is_deleted, created_at, updated_at
             FROM financial_records
             WHERE id = %s AND is_deleted = FALSE
             LIMIT 1
@@ -92,6 +99,9 @@ def update_record(db: PGConnection, record_id: int, data: RecordUpdate) -> Optio
 
     payload = data.model_dump(exclude_unset=True)
 
+    if isinstance(payload.get("category"), str):
+        payload["category"] = _normalize_category(payload["category"])
+
     for field in ("amount", "type", "category", "date", "notes"):
         if field in payload:
             updates.append(f"{field} = %s")
@@ -107,7 +117,7 @@ def update_record(db: PGConnection, record_id: int, data: RecordUpdate) -> Optio
         UPDATE financial_records
         SET {', '.join(updates)}
         WHERE id = %s AND is_deleted = FALSE
-        RETURNING id, user_id, amount, type, category, date, notes, is_deleted, created_at, updated_at
+        RETURNING id, user_id, amount, type, INITCAP(TRIM(category)) AS category, date, notes, is_deleted, created_at, updated_at
     """
 
     with db.cursor(cursor_factory=RealDictCursor) as cursor:

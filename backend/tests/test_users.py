@@ -111,6 +111,52 @@ def test_users_sync_updates_firebase_uid_for_existing_email(auth_client, db_conn
     assert response.json()["role"] == "admin"
 
 
+def test_users_sync_maps_admin_analyst_local_part_aliases(auth_client, monkeypatch):
+    async def _admin_token(_: str) -> Dict[str, Any]:
+        return {
+            "firebase_uid": "firebase-admin-alias",
+            "email": "admin+project@any-domain.dev",
+            "claims": {},
+        }
+
+    monkeypatch.setattr("routers.users.verify_firebase_token", _admin_token)
+
+    admin_response = auth_client.post(
+        "/users/sync",
+        headers={"Authorization": "Bearer valid-token"},
+        json={
+            "firebase_uid": "firebase-admin-alias",
+            "email": "admin+project@any-domain.dev",
+            "name": "Admin Alias",
+        },
+    )
+
+    assert admin_response.status_code == status.HTTP_200_OK
+    assert admin_response.json()["role"] == "admin"
+
+    async def _analyst_token(_: str) -> Dict[str, Any]:
+        return {
+            "firebase_uid": "firebase-analyst-alias",
+            "email": "analyst+project@any-domain.dev",
+            "claims": {},
+        }
+
+    monkeypatch.setattr("routers.users.verify_firebase_token", _analyst_token)
+
+    analyst_response = auth_client.post(
+        "/users/sync",
+        headers={"Authorization": "Bearer valid-token"},
+        json={
+            "firebase_uid": "firebase-analyst-alias",
+            "email": "analyst+project@any-domain.dev",
+            "name": "Analyst Alias",
+        },
+    )
+
+    assert analyst_response.status_code == status.HTTP_200_OK
+    assert analyst_response.json()["role"] == "analyst"
+
+
 def test_users_me_returns_authenticated_users_data(client, mock_current_user, viewer_user):
     mock_current_user(user=viewer_user)
 
